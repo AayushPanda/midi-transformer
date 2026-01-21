@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
     # ---- Training performance ----
     t0 = time.perf_counter()
-    tk.train(content, n_merges=300)
+    tk.train(content, n_merges=8000)
     t1 = time.perf_counter()
 
     # ---- Encoding performance ----
@@ -167,7 +167,7 @@ if __name__ == "__main__":
     )
 
     print("\n=== BPE Tokeniser Performance Stats ===")
-    print(f"Training time       : {(t1 - t0)*1000:.2f} ms")
+    print(f"Training time       : {(t1 - t0):.2f} s")
     print(f"Encoding time       : {(t3 - t2)*1000:.4f} ms")
     print(f"Decoding time       : {(t5 - t4)*1000:.4f} ms")
     print(f"N training bytes    : {n_bytes} bytes")
