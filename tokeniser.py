@@ -11,6 +11,7 @@ import functools
 
 class BPETokeniser():
     def __init__(self) -> None:
+        self.vocab_size = 0
         self.vocab = {}
         self.merges = {}
         self.token_lut = {}
@@ -89,6 +90,7 @@ class BPETokeniser():
             content, freqs = self.merge(content, merge_pair, key, freqs)
         
         self.vocab = vocab
+        self.vocab_size = vocab_size
         self.merges = {id: pair for pair, id in self.vocab.items()}
         self.token_lut = {id: self.get_bytes_for_id(id) for id in self.merges.keys()}
     
@@ -127,6 +129,7 @@ class BPETokeniser():
     def load(self, path: str):
         with open(path, "rb") as f:
             self.vocab = pickle.load(f)
+            self.vocab_size = len(self.vocab.keys())
             self.merges = {id: pair for pair, id in self.vocab.items()}
             self.token_lut = {id: self.get_bytes_for_id(id) for id in self.merges.keys()}
 
