@@ -15,23 +15,26 @@ class MultiHeadAttention(nn.Module):
         self.wv = nn.Parameter(torch.rand_like(self.wq))
         self.reproj = nn.Linear(attention_dim, in_dim)
     
-    def forward(self, x, mask=False):
-        k = torch.einsum("ni,hib->hnb", x, self.wk)
-        q = torch.einsum("ni,hib->hnb", x, self.wq)
-        v = torch.einsum("ni,hib->hnb", x, self.wv)
+    def forward(self, x: torch.Tensor, mask=False):
+        # gives batches x heads x n x attn_dim
+        n_batches = x.shape[0]
 
-        # gives n_heads x n x n
+        k = torch.einsum("bni,hid->bhnd", x, self.wk)
+        q = torch.einsum("bni,hid->bhnd", x, self.wq)
+        v = torch.einsum("bni,hid->bhnd", x, self.wv)
+
+        # gives batches x n_heads x n x n
         if mask:
-            w = q @ torch.transpose(k, 1, 2) / math.sqrt(self.block_size)
+            w = q @ torch.transpose(k, -2, -1) / math.sqrt(self.block_size)
 
             tril = torch.tril(torch.ones_like(w))
-            w = torch.softmax(torch.masked_fill(w, tril==0, float("-inf")), 2)
+            w = torch.softmax(torch.masked_fill(w, tril==0, float("-inf")), -1)
 
 
         else:
-            w = torch.softmax((q @ torch.transpose(k, 1, 2)) / math.sqrt(self.block_size), 2)
+            w = torch.softmax((q @ torch.transpose(k, -2, -1)) / math.sqrt(self.block_size), -1)
 
         o = w @ v  # n_heads x n x block_size
-        o = o.permute(1,0,2).reshape(-1, self.attention_dim)  # n x attention_dim
+        o = o.permute(0,2,1,3).reshape(n_batches,-1, self.attention_dim)  # n x attention_dim
 
         return self.reproj(o)

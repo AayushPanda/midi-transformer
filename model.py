@@ -1,6 +1,7 @@
-from typing import Literal
+from typing import List, Literal
 import torch
 import torch.nn as nn
+import numpy
 
 from attention import MultiHeadAttention
 from layer_norm import LayerNorm
@@ -42,16 +43,17 @@ class Transformer(nn.Module):
 
         self.reproj = nn.Linear(embedding_dims, vocab_length)
 
-    def forward(self, x) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         tok_e = self.embeddings[x]
-        pos_e = self.pos_embeddings[x]
+        pos_e = self.pos_embeddings[:x.shape][1]
         e = tok_e+pos_e
 
         return self.reproj(self.blocks(e))
 
-    def inference(self, prompt: str, max_tokens: int = 500, decoding_mode: Literal["greedy"] | Literal["beam"] | Literal["nucleus"] = "greedy"):
-        tokens = self.tokeniser.encode(prompt)
+    def inference(self, prompts: List[str], max_tokens: int = 500, decoding_mode: Literal["greedy"] | Literal["beam"] | Literal["nucleus"] = "greedy"):
+        tokens = [self.tokeniser.encode(prompt) for prompt in prompts]
         if len(tokens) > max_tokens: raise ValueError(f"Context window exceeded: max {self.max_tokens}, got {len(tokens)}")
+        tokens = torch.tensor(tokens, dtype=torch.int32)    # might have to make this data type inferred if vocab absurdly large
         output = []
         for _ in range(max_tokens):
             token_probs = torch.softmax(self.forward(tokens), 0)
@@ -60,9 +62,10 @@ class Transformer(nn.Module):
 
         return "".join(output)
     
-    def inference_stream(self, prompt: str, max_tokens: int = 500, decoding_mode: Literal["greedy"] | Literal["beam"] | Literal["nucleus"] = "greedy"):
-        tokens = self.tokeniser.encode(prompt)
+    def inference_stream(self, prompts: List[str], max_tokens: int = 500, decoding_mode: Literal["greedy"] | Literal["beam"] | Literal["nucleus"] = "greedy"):
+        tokens = [self.tokeniser.encode(prompt) for prompt in prompts]
         if len(tokens) > max_tokens: raise ValueError(f"Context window exceeded: max {self.max_tokens}, got {len(tokens)}")
+        tokens = torch.tensor(tokens, dtype=torch.int32)    # might have to make this data type inferred if vocab absurdly large
 
         for _ in range(max_tokens):
             token_probs = torch.softmax(self.forward(tokens), 0)
