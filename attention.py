@@ -11,8 +11,8 @@ class MultiHeadAttention(nn.Module):
         self.attention_dim = self.block_size * n_heads
         self.n_heads = n_heads
         self.wq = nn.Parameter(torch.randn(n_heads, in_dim, self.block_size))
-        self.wk = nn.Parameter(torch.rand_like(self.wq))
-        self.wv = nn.Parameter(torch.rand_like(self.wq))
+        self.wk = nn.Parameter(torch.randn_like(self.wq))
+        self.wv = nn.Parameter(torch.randn_like(self.wq))
         self.reproj = nn.Linear(attention_dim, in_dim)
     
     def forward(self, x: torch.Tensor, mask=False):
