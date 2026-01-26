@@ -58,14 +58,14 @@ def train(model: Transformer, device="cuda" if torch.cuda.is_available() else "c
     logging.info(f"Starting training on device: {device}")
     model.to(device)
 
-    epochs = 1
-    batch_size = 30
+    epochs = 10
+    batch_size = 5
     learning_rate = 1e-3
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     logging.info(f"Optimizer initialized: Adam with lr={learning_rate}")
 
-    dataloader = TextDataLoader("test.txt", model.tokeniser)
+    dataloader = TextDataLoader("shakespeare.txt", model.tokeniser)
     train_data, val_data = dataloader.get_train_val_splits(model.context_length, 0.9)
     logging.info(f"Training data: {len(train_data)} examples, Validation data: {len(val_data)} examples")
 
@@ -73,7 +73,7 @@ def train(model: Transformer, device="cuda" if torch.cuda.is_available() else "c
         logging.info(f"Epoch {epoch + 1}/{epochs} starting")
         for i in range(0, len(train_data), batch_size):
             batch_examples = train_data[i: i + batch_size]
-            batch = torch.tensor(batch_examples, dtype=torch.int32, device=device)
+            batch = torch.tensor(batch_examples, dtype=torch.long, device=device)
 
             logging.debug(f"Processing batch {i // batch_size + 1} with shape {batch.shape}")
 
@@ -118,7 +118,7 @@ if __name__ == "__main__":
         attention_dims=768,
         n_attn_heads=12,
         context_length=512,
-        vocab_length=301,
+        vocab_length=tokeniser.vocab_size+1,
         tokeniser=tokeniser
     )
 
