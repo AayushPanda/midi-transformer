@@ -14,7 +14,7 @@ class MultiHeadAttention(nn.Module):
         self.wk = nn.Parameter(torch.randn_like(self.wq))
         self.wv = nn.Parameter(torch.randn_like(self.wq))
         self.reproj = nn.Linear(attention_dim, in_dim)
-        self.register_buffer("tril", torch.tril(torch.ones(context_length, context_length)))
+        # self.register_buffer("tril", torch.tril(torch.ones(context_length, context_length)))
     
     def forward(self, x: torch.Tensor, mask=False):
         # gives batches x heads x n x attn_dim
@@ -28,7 +28,8 @@ class MultiHeadAttention(nn.Module):
         if mask:
             w = q @ torch.transpose(k, -2, -1) / math.sqrt(self.block_size)
 
-            tril = self.get_buffer("tril")[:w.size(1), :w.size(1)]
+            tril = torch.tril(torch.ones_like(w))
+            # tril = self.get_buffer("tril")[:w.size(1), :w.size(1)]
             w = torch.softmax(torch.masked_fill(w, tril==0, float("-inf")), -1)
 
 
