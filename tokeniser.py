@@ -18,6 +18,8 @@ class Node:
         return str(self.data)
     def __repr__(self) -> str:
         return self.__str__()
+    def __lt__(self, other: "Node") -> bool:
+        return self.data < other.data
 
 class LinkedList:
     """Represents the linked list structure."""
@@ -92,9 +94,16 @@ class BPETokeniser():
 
         newfreqs = {}
         last_merge_idx = 0
-        for node in list(pairs[pair]):
+        l = list(pairs[pair])
+        for node in sorted(l):
+            # print(f"List of nodes: {l}")
+            # print(f"Acting on: {node}")
+            # print("Pairs: ", pairs)
+            # print("Content: ", content)
+            # print()
             if not node.next: break
             if node.data == -1: continue    # already merged into something, does not exist anymore
+            # if (content[node.data], content[node.next.data]) != pair: continue    # if something stops working for overlapping merges im giving up and using this
             if node.prev:
                 target = (content[node.prev.data], idx)
                 if freqs:
@@ -111,17 +120,23 @@ class BPETokeniser():
                 if freqs:
                     newfreqs[target] = newfreqs.get(target, 0) + 1
 
+
+                pairs[(content[node.next.data], content[node.next.next.data])].remove(node.next)
+                
                 if target not in pairs:
                     pairs[target] = set()
-                    
-                pairs[target].add(node)
 
+                pairs[target].add(node)
+                
+                if not pairs[(content[node.next.data], content[node.next.next.data])]: del pairs[(content[node.next.data], content[node.next.next.data])]
+
+            # content[node.next.data] = 6969  # for debugging really
             node.next.data = -1 # mark as consumed
             node.next = node.next.next
             if node.next: node.next.prev = node
             content[node.data] = idx
         
-        del pairs[pair]
+        if pair in pairs: del pairs[pair]
         output = [content]
         if freqs:
             for pair, count in newfreqs.items():
@@ -172,6 +187,8 @@ class BPETokeniser():
         self.token_lut = {id: self.get_bytes_for_id(id) for id in self.merges.keys()}
     
     def tokenise(self, content: str):
+        orig = content
+        if not content: return []
         content = array('H', array('B', bytes(content, encoding = "utf-8")))
 
         if len(content) <= 1:
@@ -184,6 +201,16 @@ class BPETokeniser():
             if i < 256:
                 i += 1
                 continue
+            # if orig=="     Pets.":
+            #     output = []
+            #     curr = ll.head
+            #     while(curr):
+            #         if curr.data != -1:
+            #             output.append(content[curr.data])
+            #         curr = curr.next
+            #     print(f"LL output: {output}")
+            #     print(f"Full array: {content}")
+            #     print(f"Merging {pair} to {idx}")
             content, pairs = self.merge(content, pair, idx, pairs)
 
         output = []
@@ -225,20 +252,6 @@ if __name__ == "__main__":
 
     content = open("shakespeare.txt", "r").read()
     n_bytes = len(bytearray(content, encoding="utf-8"))
-    test = """Lord of my love, to whom in vassalage
-Thy merit hath my duty strongly knit;
-To thee I send this written embassage
-To witness     duty, not to show my wit.
-Duty so great, which wit so poor as mine
-May make seem bare,      in wanting words to show it;
-But that I hope some good conceit of thine
-In thy soul's thought (all naked) will bestow it:
-Till whatsoever star that guides my moving,
-Points on me graciously with fair aspect,
-And puts apparel on my tattered loving,
-To show me worthy of thy sweet respect,
-Then may I dare to boast how I do love thee,
-Till then, not show my head where thou mayst prove me."""
     test = content
 
     tk = BPETokeniser()
@@ -246,6 +259,7 @@ Till then, not show my head where thou mayst prove me."""
     # ---- Training performance ----
     t0 = time.perf_counter()
     tk.train(content, n_merges=8000)
+    # tk.load("tokeniser_vocab.pkl")
     t1 = time.perf_counter()
     print("Done training")
 
@@ -291,8 +305,13 @@ Till then, not show my head where thou mayst prove me."""
     print(f"Merge rules         : {len(tk.vocab) - 256}")
 
     print("\n--- Correctness ---")
-    # print(f"Original            : {test}")
-    # print(F"Decoded             : {decoded}")
+    # print(f"Original            : \"{test}\"")
+    # print("Token LUT:")
+    # print(tk.token_lut)
+    # print("Merge rules:")
+    # print(tk.merges)
+    # print(f"Decoded             : \"{decoded}\"")
+    # print(f"Encoded             : {encoded}")
     print(f"Round-trip correct  : {decoded == test}")
 
     tk.save("tokeniser_vocab.pkl")
