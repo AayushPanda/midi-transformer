@@ -17,11 +17,11 @@ class Block(nn.Module):
         self.ff = MLP([in_dims, in_dims*4, in_dims*4, in_dims])
     
     def forward(self, x):
-        x1 = self.attn(x, mask=True)
-        x = self.layer_norm_1(x+x1)
+        x1 = self.attn(self.layer_norm_1(x), mask=True)
+        x = x+x1
 
-        x1 = self.ff(x)
-        x = self.layer_norm_2(x + x1)
+        x1 = self.ff(self.layer_norm_2(x))
+        x = x + x1
 
         return x
 
@@ -54,21 +54,21 @@ class Transformer(nn.Module):
         self.eval()
         with torch.no_grad():
             tokens = [self.tokeniser.encode(prompt) for prompt in prompts]
-            print(tokens)
+            # print(tokens)
             token_ends = torch.tensor([len(prompt) for prompt in tokens], dtype=torch.long)
-            print(token_ends)
+            # print(token_ends)
             tokens = [prompt + [0]*(self.context_length - token_ends[i]) for i, prompt in enumerate(tokens)]
             tokens = torch.tensor(tokens, dtype=torch.long)
             outputs = []
             for _ in range(max_tokens):
                 if decoding_mode == "greedy":
                     token_probs = torch.softmax(self.forward(tokens), -1)
-                    print(torch.argmax(token_probs, -1).int())
+                    # print(torch.argmax(token_probs, -1).int())
                     token_probs = token_probs[torch.arange(tokens.size(0)), token_ends, :]
 
-                    print(torch.topk(token_probs, 5, -1))
-                    out_tokens = torch.multinomial(token_probs, 1).squeeze(-1)
-                    # out_tokens = torch.argmax(token_probs,-1).int()
+                    # print(torch.topk(token_probs, 5, -1))
+                    # out_tokens = torch.multinomial(token_probs, 1).squeeze(-1)
+                    out_tokens = torch.argmax(token_probs,-1).long()
                     outputs.append(list(out_tokens))
                     tokens[torch.arange(tokens.size(0)), token_ends] = out_tokens
                     token_ends += 1
