@@ -10,9 +10,9 @@ class MLP(nn.Module):
         depth = len(shape)
         layers = []
         for i in range(len(shape)-1):
-            self.layers.append(nn.Linear(shape[i], shape[i+1]))
+            layers.append(nn.Linear(shape[i], shape[i+1]))
             if i < len(shape)-2:
-                self.layers.append(nn.GELU())
+                layers.append(nn.GELU())
         self.layers = nn.Sequential(*layers)
         
 
