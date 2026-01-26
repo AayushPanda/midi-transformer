@@ -96,11 +96,6 @@ class BPETokeniser():
         last_merge_idx = 0
         l = list(pairs[pair])
         for node in sorted(l):
-            # print(f"List of nodes: {l}")
-            # print(f"Acting on: {node}")
-            # print("Pairs: ", pairs)
-            # print("Content: ", content)
-            # print()
             if not node.next: break
             if node.data == -1: continue    # already merged into something, does not exist anymore
             # if (content[node.data], content[node.next.data]) != pair: continue    # if something stops working for overlapping merges im giving up and using this
@@ -201,16 +196,6 @@ class BPETokeniser():
             if i < 256:
                 i += 1
                 continue
-            # if orig=="     Pets.":
-            #     output = []
-            #     curr = ll.head
-            #     while(curr):
-            #         if curr.data != -1:
-            #             output.append(content[curr.data])
-            #         curr = curr.next
-            #     print(f"LL output: {output}")
-            #     print(f"Full array: {content}")
-            #     print(f"Merging {pair} to {idx}")
             content, pairs = self.merge(content, pair, idx, pairs)
 
         output = []
@@ -305,13 +290,6 @@ if __name__ == "__main__":
     print(f"Merge rules         : {len(tk.vocab) - 256}")
 
     print("\n--- Correctness ---")
-    # print(f"Original            : \"{test}\"")
-    # print("Token LUT:")
-    # print(tk.token_lut)
-    # print("Merge rules:")
-    # print(tk.merges)
-    # print(f"Decoded             : \"{decoded}\"")
-    # print(f"Encoded             : {encoded}")
     print(f"Round-trip correct  : {decoded == test}")
 
     tk.save("tokeniser_vocab.pkl")
