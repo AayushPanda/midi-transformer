@@ -3,10 +3,55 @@ import os
 from array import array
 import heapq
 import pickle
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 import regex as re
 import functools
 
+
+class Node:
+    """Represents a single node in a linked list."""
+    def __init__(self, data, prev=None, next=None):
+        self.data = data
+        self.prev: Optional[Node] = prev
+        self.next: Optional[Node] = next
+    def __str__(self) -> str:
+        return str(self.data)
+    def __repr__(self) -> str:
+        return self.__str__()
+
+class LinkedList:
+    """Represents the linked list structure."""
+    def __init__(self, head = None):
+        self.head = head
+
+    @classmethod
+    def from_list(cls, l: Iterable) -> "LinkedList":
+        if not l: return LinkedList()
+        head = None
+        prev = None
+        for item in l:
+            curr = Node(item,prev)
+            if not head: head = curr
+            if prev: prev.next = curr
+            prev = curr
+        return LinkedList(head)
+    
+    def __iter__(self):
+        curr = self.head
+        while(curr):
+            yield curr.data
+            curr = curr.next
+
+    def __str__(self) -> str:
+        output = []
+        curr = self.head
+        while(curr):
+            output.append(curr.data)
+            curr = curr.next
+
+        return str(output)
+    def __repr__(self) -> str:
+        return self.__str__()
 # Simple string tokeniser
 
 class BPETokeniser():
@@ -27,34 +72,63 @@ class BPETokeniser():
             return m
         else:
             return self.get_bytes_for_id(m[0]) + self.get_bytes_for_id(m[1])
-        
-    def merge(self, content, pair, idx, freqs: Optional[List[Tuple[int, Tuple[int, int]]]] = None) -> Tuple[array[int], List[Tuple[int, Tuple[int, int]]]]:
-        out = array(content.typecode)
-        newfreqs = {}
-        i = 0
-        while i < len(content):
-            if i == len(content) - 1:
-                out.append(content[i])
-                i+=1
+    
+    def get_pair_indices(self, content, ll: LinkedList):
+        pairs = {}
+        curr = ll.head
+        while(curr and curr.next):
+            target = (content[curr.data], content[curr.next.data])
+            if target not in pairs: pairs[target] = set()
+            pairs[target].add(curr)
+            curr = curr.next
+        return pairs
 
-            # have to do this way so we can compare against both two byte byte sequences and integer tuples
-            elif content[i] == pair[0] and content[1+i] == pair[1]:
+    def merge(self, content, pair, idx, pairs: Dict[Tuple[int, int], Set[Node]], freqs: Optional[List[Tuple[int, Tuple[int, int]]]] = None) -> Tuple[array[int], List[Tuple[int, Tuple[int, int]]],  Dict[Tuple[int, int], Set[Node]]]:
+        if pair not in pairs:
+            output = [content]
+            if freqs: output.append(freqs)
+            output.append(pairs)
+            return tuple(output)
+
+        newfreqs = {}
+        last_merge_idx = 0
+        for node in list(pairs[pair]):
+            if not node.next: break
+            if node.data == -1: continue    # already merged into something, does not exist anymore
+            if node.prev:
+                target = (content[node.prev.data], idx)
                 if freqs:
-                    if i > 0:
-                        newfreqs[(content[i-1], idx)] = newfreqs.get((content[i-1], idx), 0) + 1
-                    if i < len(content) - 1:
-                        newfreqs[(idx, content[i+1])] = newfreqs.get((idx, content[i+1]), 0) + 1
-                out.append(idx)
-                i+=2
-            else:
-                out.append(content[i])
-                i+=1
+                    newfreqs[target] = newfreqs.get(target, 0) + 1
+
+                if target not in pairs:
+                    pairs[target] = set()
+                pairs[target].add(node.prev)
+
+                pairs[(content[node.prev.data], content[node.data])].remove(node.prev)
+                if not pairs[(content[node.prev.data], content[node.data])]: del pairs[(content[node.prev.data], content[node.data])]
+            if node.next.next:
+                target = (idx, content[node.next.next.data])
+                if freqs:
+                    newfreqs[target] = newfreqs.get(target, 0) + 1
+
+                if target not in pairs:
+                    pairs[target] = set()
+                    
+                pairs[target].add(node)
+
+            node.next.data = -1 # mark as consumed
+            node.next = node.next.next
+            if node.next: node.next.prev = node
+            content[node.data] = idx
+        
+        del pairs[pair]
+        output = [content]
         if freqs:
             for pair, count in newfreqs.items():
                 heapq.heappush(freqs, (-count, pair))
-            return out, freqs
-        else:
-            return out
+            output.append(freqs)
+        output.append(pairs)
+        return tuple(output)   # in order, [content, freqs, pairs]
 
     def get_freqs(self, ids):
         freqs: Dict[Tuple[int, int], int] = {}
@@ -76,9 +150,13 @@ class BPETokeniser():
         content: array[int] = array('H',array('B', bytes(content, encoding="utf-8"))) # type: ignore
 
         freqs: List[Tuple[int, Tuple[int, int]]] = [(-count, pair) for pair, count in self.get_freqs(content).items()]
+        pair_ll = LinkedList.from_list(range(len(content)))
         heapq.heapify(freqs)
+        pairs = self.get_pair_indices(content, pair_ll)
         for _ in range(n_merges):
             freq, merge_pair = heapq.heappop(freqs)
+            while merge_pair not in pairs:
+                freq, merge_pair = heapq.heappop(freqs)
             freq = -freq
             if freq == 1:
                 break   # If not pairs occur more than once we cannot compress any more
@@ -86,8 +164,7 @@ class BPETokeniser():
             # Dont have to check against reinsertion because it can never happen
             key = vocab[merge_pair] = vocab_size
             vocab_size += 1
-
-            content, freqs = self.merge(content, merge_pair, key, freqs)
+            content, freqs, pairs = self.merge(content, merge_pair, key, pairs, freqs)
         
         self.vocab = vocab
         self.vocab_size = vocab_size
@@ -101,19 +178,27 @@ class BPETokeniser():
             return content
         
         i = 0
+        ll = LinkedList.from_list(range(len(content)))
+        pairs = self.get_pair_indices(content, ll)
         for pair, idx in self.vocab.items():
             if i < 256:
                 i += 1
                 continue
-            content = self.merge(content, pair, idx)
+            content, pairs = self.merge(content, pair, idx, pairs)
 
-        return content
+        output = []
+        curr = ll.head
+        while(curr):
+            if curr.data != -1:
+                output.append(content[curr.data])
+            curr = curr.next
+        return output
     
     def encode(self, content: str):
-        out = []
-        for group in re.findall(self.pattern, content):
-            out.extend(self.tokenise(group))
-
+        # out = []
+        # for group in re.findall(self.pattern, content):
+        #     out.extend(self.tokenise(group))
+        out = self.tokenise(content)
         return out
     
     def decode(self, tokens):
@@ -138,9 +223,23 @@ if __name__ == "__main__":
     import time
     import sys
 
-    content = open("test.txt", "r").read()
+    content = open("shakespeare.txt", "r").read()
     n_bytes = len(bytearray(content, encoding="utf-8"))
-    test = "This is an example sentence that I am testig this tokeniser on"
+    test = """Lord of my love, to whom in vassalage
+Thy merit hath my duty strongly knit;
+To thee I send this written embassage
+To witness     duty, not to show my wit.
+Duty so great, which wit so poor as mine
+May make seem bare,      in wanting words to show it;
+But that I hope some good conceit of thine
+In thy soul's thought (all naked) will bestow it:
+Till whatsoever star that guides my moving,
+Points on me graciously with fair aspect,
+And puts apparel on my tattered loving,
+To show me worthy of thy sweet respect,
+Then may I dare to boast how I do love thee,
+Till then, not show my head where thou mayst prove me."""
+    test = content
 
     tk = BPETokeniser()
 
@@ -148,16 +247,19 @@ if __name__ == "__main__":
     t0 = time.perf_counter()
     tk.train(content, n_merges=8000)
     t1 = time.perf_counter()
+    print("Done training")
 
     # ---- Encoding performance ----
     t2 = time.perf_counter()
     encoded = tk.encode(test)
     t3 = time.perf_counter()
+    print("Done encoding")
 
     # ---- Decoding performance ----
     t4 = time.perf_counter()
     decoded = tk.decode(encoded)
     t5 = time.perf_counter()
+    print("Done decoding")
 
     # ---- Statistics ----
     orig_bytes = len(test.encode("utf-8"))
@@ -189,6 +291,8 @@ if __name__ == "__main__":
     print(f"Merge rules         : {len(tk.vocab) - 256}")
 
     print("\n--- Correctness ---")
+    # print(f"Original            : {test}")
+    # print(F"Decoded             : {decoded}")
     print(f"Round-trip correct  : {decoded == test}")
 
     tk.save("tokeniser_vocab.pkl")
