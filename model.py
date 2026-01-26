@@ -50,48 +50,36 @@ class Transformer(nn.Module):
 
         return self.reproj(self.blocks(e))
 
-    def inference(self, prompt: str, max_tokens: int = 500, decoding_mode: Literal["greedy"] | Literal["beam"] | Literal["nucleus"] = "greedy"):
+    def inference(self, prompts: List[str], max_tokens: int = 30, decoding_mode: Literal["greedy"] | Literal["beam"] | Literal["nucleus"] = "greedy"):
         self.eval()
         with torch.no_grad():
-            tokens = self.tokeniser.encode(prompt)
-            n = len(tokens)
-            if n >= max_tokens: raise ValueError(f"Context window exceeded: max {self.context_length-1}, got {len(tokens)}")
-            tokens = torch.tensor(tokens, dtype=torch.int32)    # might have to make this data type inferred if vocab absurdly large
-            output = []
+            tokens = [self.tokeniser.encode(prompt) for prompt in prompts]
+            print(tokens)
+            token_ends = torch.tensor([len(prompt) for prompt in tokens], dtype=torch.long)
+            print(token_ends)
+            tokens = [prompt + [0]*(self.context_length - token_ends[i]) for i, prompt in enumerate(tokens)]
+            tokens = torch.tensor(tokens, dtype=torch.long)
+            outputs = []
             for _ in range(max_tokens):
-                token_probs = torch.softmax(self.forward(tokens), -1)
-                if decoding_mode=="greedy":
-                    pred = torch.argmax(token_probs[n])
-                    if n >= self.context_length - 1:
-                        tokens[:self.context_length - 1] = tokens[1:]
-                        tokens[n] = pred
-                    else:
-                        n += 1
-                    
+                if decoding_mode == "greedy":
+                    token_probs = torch.softmax(self.forward(tokens), -1)
+                    print(torch.argmax(token_probs, -1).int())
+                    token_probs = token_probs[torch.arange(tokens.size(0)), token_ends, :]
 
-                    output.append(pred)
-
-            return self.tokeniser.decode(output)
-    
-    def inference_stream(self, prompt: str, max_tokens: int = 500, decoding_mode: Literal["greedy"] | Literal["beam"] | Literal["nucleus"] = "greedy"):
-        self.eval()
-        with torch.no_grad():
-            tokens = self.tokeniser.encode(prompt)
-            n = len(tokens)
-
-            if n >= max_tokens: raise ValueError(f"Context window exceeded: max {self.context_length-1}, got {len(tokens)}")
-            tokens = torch.tensor(tokens, dtype=torch.int32)    # might have to make this data type inferred if vocab absurdly large
-            output = []
-            for _ in range(max_tokens):
-                token_probs = torch.softmax(self.forward(tokens), -1)
-                if decoding_mode=="greedy":
-                    pred = torch.argmax(token_probs[n])
-                    if n >= self.context_length - 1:
-                        tokens[:self.context_length - 1] = tokens[1:]
-                        tokens[n] = pred
-                    else:
-                        n += 1
-                    
-
-                    yield self.tokeniser.decode(pred)
+                    print(torch.topk(token_probs, 5, -1))
+                    out_tokens = torch.multinomial(token_probs, 1).squeeze(-1)
+                    # out_tokens = torch.argmax(token_probs,-1).int()
+                    outputs.append(list(out_tokens))
+                    tokens[torch.arange(tokens.size(0)), token_ends] = out_tokens
+                    token_ends += 1
+                    token_ends = torch.clamp(token_ends, max=self.context_length-1)
+                    # tokens_c = tokens.clone()
+                    # tokens[:, :-1] = tokens_c[:, 1:]
             
+            outputs = torch.tensor(outputs)
+            outputs = outputs.permute(1,0)
+            outputs_strings = []
+            for seq in outputs:
+                outputs_strings.append(self.tokeniser.decode(seq.tolist()))
+            
+            return outputs_strings
