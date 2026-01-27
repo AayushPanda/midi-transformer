@@ -15,6 +15,10 @@ class MLP(nn.Module):
                 layers.append(nn.GELU())
         self.layers = nn.Sequential(*layers)
         
+        for module in self.layers:
+            if isinstance(module, nn.Linear):
+                nn.init.normal_(module.weight, mean=0.0, std=0.02)
+                nn.init.zeros_(module.bias)
 
     def forward(self, x):
         return self.layers(x)
