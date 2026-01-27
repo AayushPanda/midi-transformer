@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import random
 import torch
 import torch.nn.functional as F
@@ -7,7 +8,7 @@ from tokeniser import BPETokeniser
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[logging.StreamHandler()]
 )
@@ -29,8 +30,8 @@ class TextDataLoader():
         logging.info(f"Content encoded into {len(tokens)} tokens")
 
         examples = []
-        for i in range(0, len(tokens), context_length):
-            substring = tokens[i: i + context_length]
+        for i in range(0, len(tokens), context_length + 1):
+            substring = tokens[i: i + context_length + 1]
             if len(substring) < context_length:
                 logging.debug(f"Skipping short substring at index {i}, length {len(substring)}")
                 continue
@@ -49,9 +50,9 @@ def log_gpu_memory():
     if torch.cuda.is_available():
         allocated = torch.cuda.memory_allocated() / 1024**2
         reserved = torch.cuda.memory_reserved() / 1024**2
-        logging.info(f"GPU memory - Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB")
+        return f"GPU memory - Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB"
     else:
-        logging.info("CUDA not available, running on CPU")
+        return ""
 
 
 def train(model: Transformer, device="cuda" if torch.cuda.is_available() else "cpu"):
@@ -59,35 +60,37 @@ def train(model: Transformer, device="cuda" if torch.cuda.is_available() else "c
     model.to(device)
 
     epochs = 10
-    batch_size = 5
-    learning_rate = 1e-3
+    batch_size = 64
+    learning_rate = 1e-5
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, betas=(0.9, 0.95), eps=10e-8)
     logging.info(f"Optimizer initialized: Adam with lr={learning_rate}")
 
     dataloader = TextDataLoader("shakespeare.txt", model.tokeniser)
     train_data, val_data = dataloader.get_train_val_splits(model.context_length, 0.9)
     logging.info(f"Training data: {len(train_data)} examples, Validation data: {len(val_data)} examples")
-
+    losses = []
     for epoch in range(epochs):
         logging.info(f"Epoch {epoch + 1}/{epochs} starting")
         for i in range(0, len(train_data), batch_size):
             batch_examples = train_data[i: i + batch_size]
             batch = torch.tensor(batch_examples, dtype=torch.long, device=device)
-
-            logging.debug(f"Processing batch {i // batch_size + 1} with shape {batch.shape}")
+            x = batch[:,:-1]
+            y = batch[:,1:]
 
             optimizer.zero_grad()
-            logits = model(batch)
-
+            logits = model(x)
             B, T, D = logits.shape
             logits = logits.view(B*T, D)
-            batch = batch.view(B*T)
-            loss = F.cross_entropy(logits, batch.long())
-            logging.info(f"Batch {i // batch_size + 1} loss: {loss.item()}")
+            y = y.reshape(B*T)
+            loss = F.cross_entropy(logits, y.long())
+            losses.append(loss.item())
+
+            if torch.isnan(loss):
+                logging.error(f"NaN loss detected at epoch {epoch+1}, batch {i // batch_size + 1}")
+                break
 
             loss.backward()
-
             # Log gradient norms
             total_norm = 0.0
             for p in model.parameters():
@@ -95,16 +98,22 @@ def train(model: Transformer, device="cuda" if torch.cuda.is_available() else "c
                     param_norm = p.grad.data.norm(2)
                     total_norm += param_norm.item() ** 2
             total_norm = total_norm ** 0.5
-            logging.info(f"Batch {i // batch_size + 1} gradient norm: {total_norm:.4f}")
 
             optimizer.step()
+            torch.cuda.synchronize()
             logging.debug(f"Optimizer step completed for batch {i // batch_size + 1}")
-
+            logging.debug("")
+            logging.info(
+                f"Epoch {epoch+1}/{epochs} | Batch {i//batch_size}/{len(train_data)//batch_size} | "
+                f"Loss: {loss.item():.4f} | Logits std: {logits.std().item():.4f} | "
+                f"Grad norm: {total_norm:.4f} | {log_gpu_memory()}"
+            )
             log_gpu_memory()
 
     torch.save(model.state_dict(), "checkpoint.pth")
     logging.info("Model checkpoint saved to 'checkpoint.pth'")
-
+    plt.plot(losses)
+    plt.show()
 
 if __name__ == "__main__":
     logging.info("Loading tokeniser...")
@@ -112,15 +121,26 @@ if __name__ == "__main__":
     tokeniser.load("tokeniser_vocab.pkl")
     logging.info("Tokeniser loaded")
 
+    # model = Transformer(
+    #     embedding_dims=768,
+    #     n_blocks=12,
+    #     attention_dims=768,
+    #     n_attn_heads=12,
+    #     context_length=512,
+    #     vocab_length=tokeniser.vocab_size,
+    #     tokeniser=tokeniser
+    # )
     model = Transformer(
-        embedding_dims=768,
-        n_blocks=12,
-        attention_dims=768,
-        n_attn_heads=12,
-        context_length=512,
-        vocab_length=tokeniser.vocab_size+1,
+        embedding_dims=256,       # Smaller embedding, still expressive
+        n_blocks=4,               # 4 transformer blocks instead of 12
+        attention_dims=256,       # Matches embedding dims
+        n_attn_heads=4,           # 4 attention heads
+        context_length=256,       # Can process 256 tokens at a time
+        vocab_length=tokeniser.vocab_size,
         tokeniser=tokeniser
     )
+    model_state_dict = torch.load("checkpoint.pth")
+    model.load_state_dict(model_state_dict)
 
     model.train()
 
