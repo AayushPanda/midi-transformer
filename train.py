@@ -58,10 +58,11 @@ def log_gpu_memory():
 def train(model: Transformer, device="cuda" if torch.cuda.is_available() else "cpu"):
     logging.info(f"Starting training on device: {device}")
     model.to(device)
+    model = torch.compile(model)
 
-    epochs = 10
-    batch_size = 64
-    learning_rate = 1e-5
+    epochs = 150
+    batch_size = 32
+    learning_rate = 1e-4
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, betas=(0.9, 0.95), eps=10e-8)
     logging.info(f"Optimizer initialized: Adam with lr={learning_rate}")
@@ -131,16 +132,16 @@ if __name__ == "__main__":
     #     tokeniser=tokeniser
     # )
     model = Transformer(
-        embedding_dims=256,       # Smaller embedding, still expressive
-        n_blocks=4,               # 4 transformer blocks instead of 12
-        attention_dims=256,       # Matches embedding dims
-        n_attn_heads=4,           # 4 attention heads
-        context_length=256,       # Can process 256 tokens at a time
+        embedding_dims=512,       # Smaller embedding, still expressive
+        n_blocks=8,               # 4 transformer blocks instead of 12
+        attention_dims=512,       # Matches embedding dims
+        n_attn_heads=8,           # 4 attention heads
+        context_length=512,       # Can process 256 tokens at a time
         vocab_length=tokeniser.vocab_size,
         tokeniser=tokeniser
     )
-    model_state_dict = torch.load("checkpoint.pth")
-    model.load_state_dict(model_state_dict)
+    # model_state_dict = torch.load("checkpoint.pth")
+    # model.load_state_dict(model_state_dict)
 
     model.train()
 
