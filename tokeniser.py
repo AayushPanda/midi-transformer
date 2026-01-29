@@ -6,6 +6,7 @@ import pickle
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 import regex as re
 import functools
+from collections import deque
 
 
 class Node:
@@ -207,17 +208,34 @@ class BPETokeniser():
         return output
     
     def encode(self, content: str):
-        # out = []
-        # for group in re.findall(self.pattern, content):
-        #     out.extend(self.tokenise(group))
-        out = self.tokenise(content)
+        out = []
+        for group in re.findall(self.pattern, content):
+            out.extend(self.tokenise(group))
+        # out = self.tokenise(content)
         return out
     
-    def decode(self, tokens):
+    def decode(self, tokens, show_boundaries=False):
         out = bytearray()
+        token_boundaries = deque()
         for t in tokens:
             out.extend(self.token_lut[t])
-        return out.decode("utf-8", errors="replace")
+            token_boundaries.append(len(self.token_lut[t]))
+
+        output = out.decode("utf-8", errors="replace")
+
+        if not show_boundaries: return output
+        
+        prefix = []
+        run_len = 0
+        for c in output:
+            prefix.append(c)
+            run_len += len(c.encode("utf-8"))
+            if run_len >= token_boundaries[0]:
+                prefix.append("|")
+                run_len = 0
+                token_boundaries.popleft()
+        return "".join(prefix)
+
     
     def save(self, path: str):
         with open(path, "wb+") as f:
