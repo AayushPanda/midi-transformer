@@ -15,7 +15,7 @@ class Block(nn.Module):
         self.attn = MultiHeadAttention(in_dims, n_attn_heads, attention_dims, context_length)
         self.layer_norm_1 = LayerNorm(in_dims)
         self.layer_norm_2 = LayerNorm(in_dims)
-        self.ff = MLP([in_dims, in_dims*4, in_dims*4, in_dims])
+        self.ff = MLP([in_dims, in_dims*4, in_dims])
     
     def forward(self, x):
         x1 = self.attn(self.layer_norm_1(x), mask=True)
@@ -109,7 +109,7 @@ class Transformer(nn.Module):
                 outputs = outputs.permute(1,0)
                 outputs_strings = []
                 for seq in outputs:
-                    outputs_strings.append(self.tokeniser.decode(seq.tolist()))
+                    outputs_strings.append(self.tokeniser.decode(seq.tolist(), show_boundaries=False))
                 
                 return outputs_strings
             elif decoding_mode == "nucleus":
