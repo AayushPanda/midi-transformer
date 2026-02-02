@@ -25,6 +25,9 @@ class Block(nn.Module):
         x = x + x1
 
         return x
+    
+    def forward_kv_cached(self, x, keys=None, values=None):
+        
 
 class Transformer(nn.Module):
     def __init__(self, embedding_dims, n_blocks, attention_dims, n_attn_heads, context_length, vocab_length, tokeniser, *args, **kwargs):
@@ -52,6 +55,12 @@ class Transformer(nn.Module):
         e = tok_e+pos_e
 
         return self.reproj(self.final_norm(self.blocks(e)))
+
+    def forward_inference(self, x: torch.Tensor, keys: torch.Tensor, values: torch.Tensor):
+        tok_e = self.embeddings[x] * math.sqrt(self.embedding_dims)
+        pos_e = self.pos_embeddings[:x.shape[-1]]
+        e = tok_e+pos_e
+
 
     def inference(self, prompts: List[str], max_tokens: int = 30, temperature=0.2, decoding_mode: Literal["multinomial"] | Literal["greedy"] | Literal["beam"] | Literal["nucleus"] = "greedy"):
         self.eval()
