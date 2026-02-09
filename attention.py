@@ -44,7 +44,7 @@ class MultiHeadAttention(nn.Module):
 
     def forward_kv_cached(self, x, mask=False, keys: Optional[torch.Tensor] =None, values: Optional[torch.Tensor]=None):
         n_batches = x.shape[0]
-        if not (keys or values):
+        if (keys is None or values is None):
 
             k = torch.einsum("bni,hid->bhnd", x, self.wk)
             q = torch.einsum("bni,hid->bhnd", x, self.wq)
@@ -61,7 +61,7 @@ class MultiHeadAttention(nn.Module):
             else:
                 w = torch.softmax((q @ torch.transpose(k, -2, -1)) / math.sqrt(self.block_size), -1)
 
-            o = w @ v  # n_heads x n x block_size
+            o = w @ v  # batches x n_heads x n x block_size
             o = o.permute(0,2,1,3).reshape(n_batches,-1, self.attention_dim)  # n x attention_dim
 
             return self.reproj(o), k, v
@@ -69,18 +69,18 @@ class MultiHeadAttention(nn.Module):
             k: torch.Tensor = keys
             v: torch.Tensor = values
 
-            k_new = torch.einsum("bi,hid->bhd", x, self.wk)
-            v_new = torch.einsum("bi,hid->bhd", x, self.wk)
-            q = torch.einsum("bi,hid->bhd", x, self.wk)
-            k = torch.cat([k, k_new], dim=1)
-            v = torch.cat([v, v_new], dim=1)
+            x = x[:,-1:,:]
 
-            q = torch.einsum("bi,hid->bhd")
+            k_new = torch.einsum("bni,hid->bhnd", x, self.wk)
+            v_new = torch.einsum("bni,hid->bhnd", x, self.wv)
+            q = torch.einsum("bni,hid->bhnd", x, self.wq)
+            k = torch.cat([k, k_new], dim=2)
+            v = torch.cat([v, v_new], dim=2)
 
             # gives batches x n_heads x n
             w = q @ torch.transpose(k, -2, -1) / math.sqrt(self.block_size)
             w = torch.softmax(w, -1)
-            o = w @ v   # bhd
-            o = o.permute().reshape(n_batches, -1, self.attention_dim)
+            o = w @ v   # bhnd
+            o = o.permute(0,2,1,3).reshape(n_batches, -1, self.attention_dim)
             return self.reproj(o), k, v
             
